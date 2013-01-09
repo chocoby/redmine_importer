@@ -35,7 +35,7 @@ class ImporterController < ApplicationController
     iip.col_sep = params[:splitter]
     iip.encoding = params[:encoding]
     iip.created = Time.new
-    iip.csv_data = params[:file].read
+    iip.csv_data = convert_string(params[:file].read, iip.encoding)
     iip.save
     
     # Put the timestamp in the params to detect
@@ -50,7 +50,6 @@ class ImporterController < ApplicationController
     
     CSV.new(iip.csv_data, {:headers=>true,
                            :converters => :all,
-                           :encoding=>iip.encoding,
                            :quote_char=>iip.quote_char,
                            :col_sep=>iip.col_sep}).each do |row|
       @samples[i] = row
@@ -194,6 +193,7 @@ class ImporterController < ApplicationController
 
     # attrs_map is fields_map's invert
     attrs_map = fields_map.invert
+    attrs_map.each { |k, v| attrs_map[k] = convert_string(v.dup, iip.encoding) }
 
     # check params
     unique_error = nil
@@ -214,9 +214,8 @@ class ImporterController < ApplicationController
       return
     end
 
-    CSV.new(iip.csv_data, {:headers=>true,
+    CSV.new(convert_string(iip.csv_data, iip.encoding), {:headers=>true,
                            :converters => :all,
-                           :encoding=>iip.encoding,
                            :quote_char=>iip.quote_char,
                            :col_sep=>iip.col_sep}).each do |row|
 
@@ -405,8 +404,7 @@ class ImporterController < ApplicationController
       end
       next if watcher_failed_count > 0
 
-      if (!issue.save)
-        # 记录错误
+      unless issue.save
         @failed_count += 1
         @failed_issues[@failed_count] = row
         flash_message(:warning, "The following data-validation errors occurred on issue #{@failed_count} in the list below")
@@ -484,5 +482,15 @@ private
     flash[type] ||= ""
     flash[type] += "#{text}<br/>"
   end
-  
+
+  def convert_string(string, encoding)
+    option = case encoding
+      when 'U' then 'UTF-8'
+      when 'S' then 'SJIS'
+      when 'E' then 'EUC-JP'
+    end
+
+    option ? string.force_encoding(option) : string
+  end
+
 end
